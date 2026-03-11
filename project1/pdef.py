@@ -100,6 +100,18 @@ class ProblemDefinition(object):
         returns: Ture or False.
         """
         ########## TODO ##########
+        if not self.bounds_state.is_satisfied(state):
+            return False
+
+        if self.panda_sim.is_collision(state):
+            return False
+
+        joint_values = state["stateVec"][0:sim.pandaNumDofs]
+        pos_ee_base, _ = self.panda_sim.jac_solver.forward_kinematics(joint_values)
+        pos_ee_world = pos_ee_base + np.array([-0.4, -0.2, 0.0])
+        if not (-0.35 <= pos_ee_world[0] <= 0.35 and -0.35 <= pos_ee_world[1] <= 0.35):
+            return False
+
         return True
 
 
@@ -113,7 +125,8 @@ class ProblemDefinition(object):
         returns: Ture or False
         """
         ########## TODO ##########
-        return True
+        manipulability = np.sqrt(max(np.linalg.det(J @ J.T), 0.0))
+        return manipulability > 0.01
     
 
         ##########################

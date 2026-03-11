@@ -192,8 +192,16 @@ class PandaSim(object):
     for i in range(n_steps):
 
       ########## TODO ##########
-      J = np.zeros(shape=(6, 7)) # Jacobian matrix
-      vq = np.zeros(shape=(7,)) # joint velocities
+      # jpos, _, _ = self.get_joint_states()
+      # q = np.array(jpos[0:pandaNumDofs])
+      # J = self.get_jacobian_matrix(q) # Jacobian matrix
+      # vq = np.linalg.pinv(J) @ vx # joint velocities
+      J = np.zeros(shape=(6, 7))
+      J = self.get_jacobian_matrix(self.get_joint_states()[0][0:7]) 
+
+      vq = np.zeros(shape=(7,)) 
+      J_pinv = np.linalg.pinv(J)
+      vq = np.dot(J_pinv, vx) 
 
 
       ##########################

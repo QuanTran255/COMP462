@@ -44,7 +44,7 @@ if __name__ == "__main__":
   args = parser.parse_args()
 
   # set up the simulation
-  pgui = utils.setup_bullet_client(p.GUI)
+  pgui = utils.setup_bullet_client(p.DIRECT)
   panda_sim = sim.PandaSim(pgui)
 
   # Task 1: Move the Robot with Jacobian-based Projection
