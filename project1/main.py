@@ -132,20 +132,32 @@ if __name__ == "__main__":
         print("RRT failed to find a plan. Exiting.")
       else:
         print("Initial plan found (%d nodes). Starting trajectory optimization..." % len(plan))
+        initial_cost = opt.plan_cost(plan)
 
         # Step 2: optimize the plan
         optimizer = opt.TrajectoryOptimizer(pdef, n_iter=500, sigma=0.05)
         time_st = time.time()
         optimized_plan = optimizer.optimize(plan)
         print("Optimization running time: %f secs" % (time.time() - time_st))
+        optimized_cost = opt.plan_cost(optimized_plan)
+        print("Initial cost: %.4f | Optimized cost: %.4f" % (initial_cost, optimized_cost))
 
-        # Step 3: execute and visualize the optimized plan
+        # Step 3: overlay both trajectories from same start state for comparison
         pgui.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+
+        print("Drawing initial trajectory in RED...")
         panda_sim.restore_state(pdef.get_start_state())
         for _ in range(2):
           panda_sim.step()
         panda_sim.restore_state(pdef.get_start_state())
-        utils.execute_plan(panda_sim, optimized_plan, sleep_time=0.005)
+        utils.execute_plan(panda_sim, plan, sleep_time=0.002)
+
+        print("Drawing optimized trajectory in BLUE...")
+        panda_sim.restore_state(pdef.get_start_state())
+        for _ in range(2):
+          panda_sim.step()
+        panda_sim.restore_state(pdef.get_start_state())
+        utils.execute_plan(panda_sim, optimized_plan, sleep_time=0.002)
         while True:
           pass
 
