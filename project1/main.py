@@ -44,7 +44,7 @@ if __name__ == "__main__":
   args = parser.parse_args()
 
   # set up the simulation
-  pgui = utils.setup_bullet_client(p.DIRECT)
+  pgui = utils.setup_bullet_client(p.GUI)
   panda_sim = sim.PandaSim(pgui)
 
   # Task 1: Move the Robot with Jacobian-based Projection
@@ -119,7 +119,35 @@ if __name__ == "__main__":
     # Task 4: Trajectory Optimization
     elif args.task == 4:
       ########## TODO ##########
-      pass
+      goal = RelocateGoal()
+      pdef.set_goal(goal)
+
+      # Step 1: find an initial plan with Kinodynamic RRT
+      planner = rrt.KinodynamicRRT(pdef)
+      time_st = time.time()
+      solved, plan = planner.solve(120.0)
+      print("RRT running time: %f secs" % (time.time() - time_st))
+
+      if not solved or plan is None:
+        print("RRT failed to find a plan. Exiting.")
+      else:
+        print("Initial plan found (%d nodes). Starting trajectory optimization..." % len(plan))
+
+        # Step 2: optimize the plan
+        optimizer = opt.TrajectoryOptimizer(pdef, n_iter=500, sigma=0.05)
+        time_st = time.time()
+        optimized_plan = optimizer.optimize(plan)
+        print("Optimization running time: %f secs" % (time.time() - time_st))
+
+        # Step 3: execute and visualize the optimized plan
+        pgui.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+        panda_sim.restore_state(pdef.get_start_state())
+        for _ in range(2):
+          panda_sim.step()
+        panda_sim.restore_state(pdef.get_start_state())
+        utils.execute_plan(panda_sim, optimized_plan, sleep_time=0.005)
+        while True:
+          pass
 
     
       ##########################
