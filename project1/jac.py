@@ -41,7 +41,7 @@ class JacSolver(object):
         """
         ########## TODO ##########
         J = np.zeros(shape=(6, 7))
-        eps = 1e-6
+        delta_q = 0.0001
 
         q = np.array(joint_values, dtype=float)
         pos0, quat0 = self.forward_kinematics(q)
@@ -49,12 +49,12 @@ class JacSolver(object):
 
         for j in range(7):
             q_pert = q.copy()
-            q_pert[j] += eps
+            q_pert[j] += delta_q
 
             pos1, quat1 = self.forward_kinematics(q_pert)
 
             # Linear velocity component
-            J[0:3, j] = (pos1 - pos0) / eps
+            J[0:3, j] = (pos1 - pos0) / delta_q
 
             # Angular velocity component via relative quaternion
             _, q_rel = self.bullet_client.multiplyTransforms([0.0, 0.0, 0.0], quat1.tolist(),
@@ -70,7 +70,7 @@ class JacSolver(object):
             else:
                 angle = 2.0 * np.arctan2(vec_norm, q_rel[3])
                 rotvec = (q_rel[:3] / vec_norm) * angle
-            J[3:6, j] = rotvec / eps
+            J[3:6, j] = rotvec / delta_q
 
         ##########################
         return J

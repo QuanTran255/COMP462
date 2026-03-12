@@ -104,7 +104,7 @@ class KinodynamicRRT(object):
 
         solved = False
         plan = None
-        k_controls = 10
+        k_controls = 1
         time_st = time.time()
 
         while time.time() - time_st < time_budget:
