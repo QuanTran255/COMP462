@@ -23,7 +23,33 @@ def primitive_wrenches(mesh, grasp, mu=0.2, n_edges=8):
     """
     ########## TODO ##########
     W = np.zeros(shape=(len(grasp) * n_edges, 6))
-    
+
+    # Get contact points (centroids of the grasped triangles)
+    con_pts = utils.get_centroid_of_triangles(mesh, grasp)
+    cm = mesh.center_mass
+
+    for i, tr_id in enumerate(grasp):
+        # Outward face normal at the contact
+        n = mesh.face_normals[tr_id]
+
+        # Build two tangent vectors perpendicular to n
+        v = np.array([1.0, 0.0, 0.0]) if abs(n[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+        t1 = np.cross(n, v)
+        t1 = t1 / np.linalg.norm(t1)
+        t2 = np.cross(n, t1)
+        t2 = t2 / np.linalg.norm(t2)
+
+        # Moment arm from center of mass to contact point
+        r = con_pts[i] - cm
+
+        for j in range(n_edges):
+            theta = 2.0 * np.pi * j / n_edges
+            # Primitive force: normal component 1, tangential component mu
+            f = n + mu * (np.cos(theta) * t1 + np.sin(theta) * t2)
+            # Torque = r x f
+            tau = np.cross(r, f)
+            W[i * n_edges + j, :3] = f
+            W[i * n_edges + j, 3:] = tau
 
     ##########################
     return W
@@ -49,6 +75,24 @@ def eval_Q(mesh, grasp, mu=0.2, n_edges=8, lmbd=1.0):
     ########## TODO ##########
     Q = -np.inf
 
+    # Get primitive wrenches
+    W = primitive_wrenches(mesh, grasp, mu=mu, n_edges=n_edges)
+
+    # Scale the torque components by sqrt(lmbd)
+    W[:, 3:6] *= np.sqrt(lmbd)
+
+    # Compute the convex hull of the primitive wrenches
+    try:
+        hull = scipy.spatial.ConvexHull(W)
+    except scipy.spatial.QhullError:
+        return Q
+
+    # The L1 quality is the minimum signed distance from the origin
+    # to the hyperplanes of the convex hull.
+    # hull.equations has rows [n1,...,n6, offset] where n·x + offset <= 0 inside.
+    # Signed distance from origin = -offset
+    offsets = hull.equations[:, -1]
+    Q = np.min(-offsets)
 
     ##########################
     return Q
@@ -71,7 +115,12 @@ def sample_stable_grasp(mesh, thresh=0.0):
     ########## TODO ##########
     grasp = None
     Q = -np.inf
+    n_faces = len(mesh.faces)
 
+    while Q <= thresh:
+        # Randomly sample 3 distinct face indices
+        grasp = list(np.random.choice(n_faces, size=3, replace=False))
+        Q = eval_Q(mesh, grasp)
 
     ##########################
     return grasp, Q
@@ -94,7 +143,29 @@ def find_neighbors(mesh, tr_id, eta=1):
     ########## TODO ##########
     nbr_ids = []
 
+    # BFS up to eta hops using vertex-sharing adjacency
+    current = {tr_id}
+    visited = {tr_id}
 
+    for _ in range(eta):
+        next_level = set()
+        for fid in current:
+            # Get vertices of this face
+            verts = mesh.faces[fid]
+            for v in verts:
+                # Get all faces incident to this vertex
+                neighbors = mesh.vertex_faces[v]
+                for nf in neighbors:
+                    if nf == -1:
+                        break
+                    if nf not in visited:
+                        next_level.add(nf)
+                        visited.add(nf)
+        current = next_level
+
+    # Return all visited faces except tr_id itself
+    visited.discard(tr_id)
+    nbr_ids = list(visited)
 
     ##########################
     return nbr_ids
@@ -114,6 +185,20 @@ def local_optimal(mesh, grasp):
     G_opt = None
     Q_max = -np.inf
 
+    # For each contact, find its neighbor faces (including itself)
+    neighbor_lists = []
+    for tr_id in grasp:
+        nbrs = find_neighbors(mesh, tr_id, eta=1)
+        nbrs.append(tr_id)  # include the current face
+        neighbor_lists.append(nbrs)
+
+    # Evaluate all combinations of neighbor faces
+    for combo in it.product(*neighbor_lists):
+        candidate = list(combo)
+        Q = eval_Q(mesh, candidate)
+        if Q > Q_max:
+            Q_max = Q
+            G_opt = candidate
 
     ##########################
     return G_opt, Q_max
@@ -130,7 +215,18 @@ def optimize_grasp(mesh, grasp):
     """
     traj = []
     ########## TODO ##########
-   
+
+    current_grasp = list(grasp)
+    current_Q = eval_Q(mesh, current_grasp)
+    traj.append(current_grasp)
+
+    while True:
+        G_opt, Q_max = local_optimal(mesh, current_grasp)
+        if Q_max <= current_Q:
+            break
+        current_grasp = G_opt
+        current_Q = Q_max
+        traj.append(current_grasp)
 
     ##########################
     return traj
