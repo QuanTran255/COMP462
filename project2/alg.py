@@ -245,7 +245,51 @@ def optimize_reachable_grasp(mesh, r=0.5):
     """
     traj = []
     ########## TODO ##########
-   
+
+    def is_reachable(grasp, r):
+        """Check if a grasp satisfies the reachability constraint."""
+        con_pts = utils.get_centroid_of_triangles(mesh, grasp)
+        centroid = np.mean(con_pts, axis=0)
+        avg_dist = np.mean(np.linalg.norm(con_pts - centroid, axis=1))
+        return avg_dist < r
+
+    # Sample a reachable stable grasp
+    n_faces = len(mesh.faces)
+    while True:
+        grasp = list(np.random.choice(n_faces, size=3, replace=False))
+        if is_reachable(grasp, r) and eval_Q(mesh, grasp) > 0.0:
+            break
+
+    current_grasp = list(grasp)
+    current_Q = eval_Q(mesh, current_grasp)
+    traj.append(current_grasp)
+
+    # Optimize while respecting reachability
+    while True:
+        # Find neighbor faces for each contact (including itself)
+        neighbor_lists = []
+        for tr_id in current_grasp:
+            nbrs = find_neighbors(mesh, tr_id, eta=1)
+            nbrs.append(tr_id)
+            neighbor_lists.append(nbrs)
+
+        # Search over all neighbor combinations for best reachable grasp
+        G_opt = None
+        Q_max = -np.inf
+        for combo in it.product(*neighbor_lists):
+            candidate = list(combo)
+            if not is_reachable(candidate, r):
+                continue
+            Q = eval_Q(mesh, candidate)
+            if Q > Q_max:
+                Q_max = Q
+                G_opt = candidate
+
+        if G_opt is None or Q_max <= current_Q:
+            break
+        current_grasp = G_opt
+        current_Q = Q_max
+        traj.append(current_grasp)
 
     ##########################
     return traj
