@@ -116,11 +116,16 @@ def sample_stable_grasp(mesh, thresh=0.0):
     grasp = None
     Q = -np.inf
     n_faces = len(mesh.faces)
+    
+    grasp_list = []
+    Q_list = []
 
     while Q <= thresh:
         # Randomly sample 3 distinct face indices
         grasp = list(np.random.choice(n_faces, size=3, replace=False))
-        Q = eval_Q(mesh, grasp)
+        Q = eval_Q(mesh, grasp, mu=1)
+        grasp_list.append(grasp)
+        Q_list.append(Q)
 
     ##########################
     return grasp, Q
