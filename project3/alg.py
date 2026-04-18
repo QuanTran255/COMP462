@@ -142,8 +142,39 @@ def get_one_obv(panda_sim):
     """
     ########## TODO ##########
     obv = None
-    
+    max_iters = 500
+    v_range = 5.0  # Cartesian velocity magnitude
 
+    # Save the robot state so every call starts from the same pose.
+    # This ensures observations are spread across different obstacles
+    # rather than clustering around wherever the robot last stopped.
+    saved_state = panda_sim.save_state()
+
+    # Pick a single random direction and hold it for the whole attempt.
+    # A constant direction is simpler and reaches obstacles faster than
+    # a momentum walk, which can spiral in circles.
+    vel = np.random.uniform(low=-v_range, high=v_range, size=(6,))
+
+    for _ in range(max_iters):
+        panda_sim.execute(vel)
+
+        if panda_sim.is_touch():
+            # Record joints at the moment of contact, then restore so the
+            # next call starts fresh.
+            jpos, _, _ = panda_sim.get_motor_joint_states()
+            obv = np.array(jpos[:7])
+            panda_sim.restore_state(saved_state)
+            break
+
+        if panda_sim.is_collision():
+            # Bounce off and pick a new random direction to keep exploring.
+            panda_sim.restore_state(saved_state)
+            vel = np.random.uniform(low=-v_range, high=v_range, size=(6,))
+
+    if obv is None:
+        # Timed out without finding a touch — restore anyway so the
+        # simulation is in a clean state for the next call.
+        panda_sim.restore_state(saved_state)
 
     ##########################
     return obv
@@ -174,12 +205,28 @@ def particle_filter_online(panda_sim, num_particles, sigma=0.05, delta=0.01, plo
         plt.pause(0.01)
 
     ########## TODO ##########
-    num_iters = 100 # The number of iterations. Feel free to change the value
-    for _ in range(num_iters):
+    num_iters = 300
+    num_failed = 0
+
+    for i in range(num_iters):
+        obv = get_one_obv(panda_sim)
+        if num_failed >= 2:
+            # reset to position 0 if we fail to get an observation for 5 consecutive iterations, to avoid the robot getting stuck in a corner
+            panda_sim.set_joint_values(np.zeros((7,)))
+            num_failed = 0
+        if obv is None:
+            print("Failed to get observation at iteration %d. Number of failed attempts: %d" % (i, num_failed))
+            num_failed += 1
+            continue
         
 
 
-        
+        panda_sim.set_joint_values(obv)
+        weights = cal_weights(particles, obv, sigma=sigma)
+        indices = np.random.choice(np.arange(num_particles), size=num_particles, replace=True, p=weights)
+        particles = particles[indices].copy()
+        particles += np.random.normal(scale=delta, size=particles.shape)
+        particles[:, 2] = np.arctan2(np.sin(particles[:, 2]), np.cos(particles[:, 2]))
 
         # plot the particles in the visualization
         if plot: 
