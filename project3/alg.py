@@ -74,7 +74,7 @@ def most_likely_particle(particles, obv):
                       Type: int
     """
     ########## TODO ##########
-    weights = cal_weights(particles, obv)
+    weights = cal_weights(particles, obv, sigma=0.5)
     idx = np.argmax(weights)
     ##########################
     return idx
@@ -113,8 +113,12 @@ def particle_filter(panda_sim, obvs, num_particles, sigma=0.05, delta=0.01, plot
         panda_sim.set_joint_values(obv)
 
         ########## TODO ##########
-        
-
+        weights = cal_weights(particles, obv, sigma=sigma)
+        indices = np.random.choice(np.arange(num_particles), size=num_particles, replace=True, p=weights)
+        particles = particles[indices].copy()
+        particles += np.random.normal(scale=delta, size=particles.shape)
+        particles[:, 2] = np.arctan2(np.sin(particles[:,2]), np.cos(particles[:,2]))
+        weights = np.ones(shape=(num_particles,)) / num_particles
 
         ##########################
 
