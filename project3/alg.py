@@ -142,39 +142,46 @@ def get_one_obv(panda_sim):
     """
     ########## TODO ##########
     obv = None
-    max_iters = 500
-    v_range = 5.0  # Cartesian velocity magnitude
+    max_iters = 300
+    refresh_every = 20
+    retreat_steps = 3
 
-    # Save the robot state so every call starts from the same pose.
-    # This ensures observations are spread across different obstacles
-    # rather than clustering around wherever the robot last stopped.
+    def sample_velocity():
+        # Favor XY exploration where cylinder contacts are most informative,
+        # while keeping a small Z/rotation component to avoid planar limit cycles.
+        v = np.zeros((6,))
+        heading = np.random.uniform(-np.pi, np.pi)
+        speed_xy = np.random.uniform(1.5, 3.0)
+        v[0] = speed_xy * np.cos(heading)
+        v[1] = speed_xy * np.sin(heading)
+        v[2] = np.random.uniform(-0.25, 0.25)
+        v[3:] = np.random.uniform(-0.8, 0.8, size=(3,))
+        return v
+
+    # Save and restore around this routine so repeated calls start from a clean pose.
     saved_state = panda_sim.save_state()
+    vel = sample_velocity()
 
-    # Pick a single random direction and hold it for the whole attempt.
-    # A constant direction is simpler and reaches obstacles faster than
-    # a momentum walk, which can spiral in circles.
-    vel = np.random.uniform(low=-v_range, high=v_range, size=(6,))
+    for i in range(max_iters):
+        if i % refresh_every == 0:
+            vel = sample_velocity()
 
-    for _ in range(max_iters):
         panda_sim.execute(vel)
 
         if panda_sim.is_touch():
-            # Record joints at the moment of contact, then restore so the
-            # next call starts fresh.
             jpos, _, _ = panda_sim.get_motor_joint_states()
             obv = np.array(jpos[:7])
-            panda_sim.restore_state(saved_state)
             break
 
         if panda_sim.is_collision():
-            # Bounce off and pick a new random direction to keep exploring.
-            panda_sim.restore_state(saved_state)
-            vel = np.random.uniform(low=-v_range, high=v_range, size=(6,))
+            # Brief retreat helps leave contact manifolds before trying a new direction.
+            for _ in range(retreat_steps):
+                panda_sim.execute(-0.5 * vel)
+                if not panda_sim.is_collision():
+                    break
+            vel = sample_velocity()
 
-    if obv is None:
-        # Timed out without finding a touch — restore anyway so the
-        # simulation is in a clean state for the next call.
-        panda_sim.restore_state(saved_state)
+    panda_sim.restore_state(saved_state)
 
     ##########################
     return obv
@@ -205,19 +212,20 @@ def particle_filter_online(panda_sim, num_particles, sigma=0.05, delta=0.01, plo
         plt.pause(0.01)
 
     ########## TODO ##########
-    num_iters = 300
+    num_iters = 500
     num_failed = 0
 
     for i in range(num_iters):
         obv = get_one_obv(panda_sim)
-        if num_failed >= 2:
-            # reset to position 0 if we fail to get an observation for 5 consecutive iterations, to avoid the robot getting stuck in a corner
-            panda_sim.set_joint_values(np.zeros((7,)))
-            num_failed = 0
         if obv is None:
-            print("Failed to get observation at iteration %d. Number of failed attempts: %d" % (i, num_failed))
             num_failed += 1
+            print("Failed to get observation at iteration %d. Number of failed attempts: %d" % (i, num_failed))
+            if num_failed >= 2:
+                # reset to start pose if we fail repeatedly, to avoid the robot getting stuck
+                panda_sim.set_joint_values(np.zeros((7,)))
+                num_failed = 0
             continue
+        num_failed = 0
         
 
 
